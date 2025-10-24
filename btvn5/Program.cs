@@ -10,6 +10,9 @@ using System.Text.Json;
 string ledState = "off";
 
 var builder = WebApplication.CreateBuilder(args);
+builder.Services.AddSession();
+
+
 
 // ✅ Dùng MVC
 builder.Services.AddControllersWithViews();
@@ -69,5 +72,5 @@ app.MapPost("/control", async (HttpContext context) =>
         state = ledState
     });
 });
-
+app.UseSession();
 app.Run();

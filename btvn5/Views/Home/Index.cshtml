@@ -1,6 +1,15 @@
-﻿<h2>Điều khiển đèn LED</h2>
-<p id="statusText">Đang tải trạng thái...</p>
-<button id="btnToggle">Đang tải...</button>
+﻿@{
+    ViewData["Title"] = "Điều khiển đèn LED";
+    var username = ViewBag.User; 
+}
+
+<h2>Xin chào, @username!</h2>
+<a href="/Account/Logout">Đăng xuất</a>
+
+<div style="margin-top:20px;">
+    <p id="statusText">Đang tải trạng thái...</p>
+    <button id="btnToggle">Đang tải...</button>
+</div>
 
 <script>
     const btnToggle = document.getElementById("btnToggle");
@@ -8,9 +17,15 @@
     let debounceTimeout;
 
     async function fetchState() {
-        const res = await fetch("/control");
-        const data = await res.json();
-        updateUI(data.state);
+        try {
+            const res = await fetch("/control");
+            if (!res.ok) throw new Error("Không thể lấy trạng thái");
+            const data = await res.json();
+            updateUI(data.state);
+        } catch (err) {
+            console.error(err);
+            statusText.innerText = "Lỗi kết nối server!";
+        }
     }
 
     function updateUI(state) {
@@ -19,21 +34,26 @@
         btnToggle.dataset.state = state;
     }
 
-    // ✅ Debounce để tránh gửi liên tục
     btnToggle.addEventListener("click", () => {
         clearTimeout(debounceTimeout);
         debounceTimeout = setTimeout(async () => {
             const newState = btnToggle.dataset.state === "on" ? "off" : "on";
-            const res = await fetch("/control", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ state: newState })
-            });
-            const data = await res.json();
-            updateUI(data.state);
+            try {
+                const res = await fetch("/control", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ state: newState })
+                });
+                if (!res.ok) throw new Error("Không thể gửi lệnh");
+                const data = await res.json();
+                updateUI(data.state);
+            } catch (err) {
+                console.error(err);
+                statusText.innerText = "Lỗi gửi lệnh!";
+            }
         }, 300);
     });
 
     fetchState();
-    setInterval(fetchState, 3000); // tự refresh trạng thái mỗi 3s
+    setInterval(fetchState, 3000);
 </script>
