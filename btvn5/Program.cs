@@ -1,73 +1,40 @@
 ﻿using Microsoft.AspNetCore.Builder;
-using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
-using Microsoft.AspNetCore.Http;
-using btvn5.Models;
-using System.Text.Json;
-
-// ✅ Biến toàn cục giữ trạng thái hiện tại
-string ledState = "off";
 
 var builder = WebApplication.CreateBuilder(args);
 
-// ✅ Dùng MVC
+// ✅ Thêm MVC
 builder.Services.AddControllersWithViews();
 
-// ✅ CORS
-builder.Services.AddCors(options =>
+// ✅ Thêm Session
+builder.Services.AddDistributedMemoryCache();
+builder.Services.AddSession(options =>
 {
-    options.AddDefaultPolicy(policy =>
-    {
-        policy.AllowAnyOrigin().AllowAnyMethod().AllowAnyHeader();
-    });
+    options.IdleTimeout = TimeSpan.FromMinutes(30); // thời gian hết hạn
+    options.Cookie.HttpOnly = true;
+    options.Cookie.IsEssential = true;
 });
 
 var app = builder.Build();
 
+// ✅ Thứ tự rất quan trọng
 if (!app.Environment.IsDevelopment())
 {
     app.UseExceptionHandler("/Home/Error");
-    app.UseHsts();
 }
 
-app.UseHttpsRedirection();
 app.UseStaticFiles();
 app.UseRouting();
-app.UseCors();
+
+// ✅ Bắt buộc: phải gọi UseSession trước UseEndpoints hoặc MapControllerRoute
+app.UseSession();
+
 app.UseAuthorization();
 
-// ✅ Route mặc định MVC
+// ✅ Cấu hình route
 app.MapControllerRoute(
     name: "default",
-    pattern: "{controller=Home}/{action=Index}/{id?}");
-
-// ✅ API: Lấy trạng thái LED hiện tại
-app.MapGet("/control", () =>
-{
-    Console.WriteLine($"Gửi trạng thái hiện tại: {ledState}");
-    return Results.Json(new
-    {
-        status = "ok",
-        state = ledState
-    });
-});
-
-// ✅ API: Cập nhật trạng thái LED từ FE
-app.MapPost("/control", async (HttpContext context) =>
-{
-    var data = await context.Request.ReadFromJsonAsync<ControlRequest>();
-    if (data?.State != null)
-    {
-        ledState = data.State.ToLower() == "on" ? "on" : "off";
-        Console.WriteLine($"Nhận từ FE: {JsonSerializer.Serialize(data)}");
-    }
-
-    return Results.Json(new
-    {
-        status = "ok",
-        state = ledState
-    });
-});
+    pattern: "{controller=Home}/{action=Login}/{id?}");
 
 app.Run();

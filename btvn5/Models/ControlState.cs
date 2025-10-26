@@ -13,8 +13,10 @@ namespace btvn5.Models
         public DateTime UpdatedAt { get; set; } = DateTime.Now;
     }
 
-    public class ControlRequest
+    public class LedRequest
     {
-        public string State { get; set; }
+        public string? User { get; set; }
+        public string? State { get; set; }
     }
+
 }

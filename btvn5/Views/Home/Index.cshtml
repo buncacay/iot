@@ -1,39 +1,53 @@
-﻿<h2>Điều khiển đèn LED</h2>
+﻿@{
+    ViewData["Title"] = "Điều khiển đèn";
+}
+
+<h2>Xin chào, @ViewBag.User!</h2>
+<a href="/Home/Logout">Đăng xuất</a>
+
 <p id="statusText">Đang tải trạng thái...</p>
 <button id="btnToggle">Đang tải...</button>
 
 <script>
-    const btnToggle = document.getElementById("btnToggle");
+    const btn = document.getElementById("btnToggle");
     const statusText = document.getElementById("statusText");
-    let debounceTimeout;
 
-    async function fetchState() {
-        const res = await fetch("/control");
-        const data = await res.json();
-        updateUI(data.state);
+    // 🔹 Lấy trạng thái LED từ server
+    async function loadState() {
+        try {
+            const res = await fetch(`/api/control/state`); // không cần /user nữa
+            if (!res.ok) {
+                statusText.innerText = "❌ Lỗi: " + res.status;
+                return;
+            }
+            const data = await res.json();
+            statusText.innerText = "Trạng thái: " + data.state;
+            btn.innerText = data.state === "on" ? "Tắt đèn" : "Bật đèn";
+        } catch (err) {
+            statusText.innerText = "⚠️ Không thể kết nối server";
+            console.error(err);
+        }
     }
 
-    function updateUI(state) {
-        statusText.innerText = `Trạng thái LED: ${state.toUpperCase()}`;
-        btnToggle.innerText = state === "on" ? "Tắt đèn" : "Bật đèn";
-        btnToggle.dataset.state = state;
-    }
-
-    // ✅ Debounce để tránh gửi liên tục
-    btnToggle.addEventListener("click", () => {
-        clearTimeout(debounceTimeout);
-        debounceTimeout = setTimeout(async () => {
-            const newState = btnToggle.dataset.state === "on" ? "off" : "on";
-            const res = await fetch("/control", {
+    // 🔹 Toggle LED
+    async function toggleLed() {
+        const newState = btn.innerText === "Bật đèn" ? "on" : "off";
+        try {
+            const res = await fetch("/api/control/set", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ state: newState })
+                body: JSON.stringify({ state: newState }) // chỉ gửi state
             });
-            const data = await res.json();
-            updateUI(data.state);
-        }, 300);
-    });
 
-    fetchState();
-    setInterval(fetchState, 3000); // tự refresh trạng thái mỗi 3s
+            if (!res.ok) {
+                console.error("Lỗi POST:", res.status);
+            }
+            loadState(); // reload trạng thái mới
+        } catch (err) {
+            console.error(err);
+        }
+    }
+
+    btn.addEventListener("click", toggleLed);
+    loadState();
 </script>
