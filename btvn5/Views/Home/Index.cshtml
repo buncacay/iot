@@ -8,36 +8,47 @@
 <p id="statusText">Đang tải trạng thái...</p>
 <button id="btnToggle">Đang tải...</button>
 
-
-
 <div class="sensor-section">
     <h3>Dữ liệu cảm biến môi trường</h3>
     <p>Nhiệt độ: <span id="temp">--</span> °C</p>
     <p>Độ ẩm: <span id="hum">--</span> %</p>
+    <p>Ánh sáng: <span id="light">--</span></p>
 </div>
 
-<script>
-    async function loadSensor() {
-        const res = await fetch('/api/sensor/get');
-        if (res.ok) {
-            const result = await res.json();
-            document.getElementById('temp').innerText = result.data.temperature.toFixed(1);
-            document.getElementById('hum').innerText = result.data.humidity.toFixed(1);
-        }
-    }
-
-    setInterval(loadSensor, 3000); // Cập nhật mỗi 3 giây
-    loadSensor();
-</script>
-
+<p id="ledMessage" style="color: green; font-weight: bold;"></p>
 
 <script>
     const btn = document.getElementById("btnToggle");
     const statusText = document.getElementById("statusText");
 
+    // --------- Cập nhật dữ liệu cảm biến ---------
+    async function loadSensor() {
+        try {
+            const res = await fetch('/api/sensor/get');
+            if (!res.ok) return;
+
+            const result = await res.json();
+            document.getElementById('temp').innerText = result.data.temperature.toFixed(1);
+            document.getElementById('hum').innerText = result.data.humidity.toFixed(1);
+
+            if (result.data.light !== undefined) {
+                document.getElementById('light').innerText = result.data.light;
+            } else {
+                document.getElementById('light').innerText = "--";
+            }
+        } catch (err) {
+            console.error(err);
+        }
+    }
+
+    // Cập nhật mỗi 3 giây
+    setInterval(loadSensor, 3000);
+    loadSensor();
+
+    // --------- Cập nhật trạng thái LED ---------
     async function loadState() {
         try {
-            const res = await fetch(`/api/control/state`);
+            const res = await fetch('/api/control/state');
             if (!res.ok) {
                 statusText.innerText = "Lỗi tải trạng thái (" + res.status + ")";
                 return;
@@ -54,11 +65,12 @@
             btn.style.cursor = "pointer";
 
         } catch (err) {
-            statusText.innerText = " Không thể kết nối server";
+            statusText.innerText = "Không thể kết nối server";
             console.error(err);
         }
     }
 
+    // --------- Nút bật/tắt LED ---------
     async function toggleLed() {
         const newState = btn.innerText === "Bật đèn" ? "on" : "off";
         try {
@@ -69,19 +81,35 @@
             });
 
             if (!res.ok) {
-                console.error(" Lỗi POST:", res.status);
+                console.error("Lỗi POST:", res.status);
                 return;
             }
 
             const data = await res.json();
             console.log("Đã cập nhật:", data);
-            loadState(); // reload lại trạng thái sau khi thay đổi
+
+            // Reload trạng thái LED
+            await loadState();
+
+            // Lấy dữ liệu cảm biến để hiển thị ánh sáng
+            const sensorRes = await fetch('/api/sensor/get');
+            const sensorData = sensorRes.ok ? await sensorRes.json() : null;
+
+            let message = `Đã ${newState === "on" ? "bật" : "tắt"} đèn thành công.`;
+            if (sensorData && sensorData.data.light !== undefined) {
+                message += ` Ánh sáng hiện tại: ${sensorData.data.light}`;
+            }
+
+            document.getElementById('ledMessage').innerText = message;
 
         } catch (err) {
             console.error(err);
         }
     }
 
+    // --------- Thêm sự kiện nút ---------
     btn.addEventListener("click", toggleLed);
+
+    // Load trạng thái LED ban đầu
     loadState();
 </script>

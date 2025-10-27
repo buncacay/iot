@@ -135,9 +135,8 @@ namespace btvn5.Controllers
             });
         }
 
-
         [HttpPost("api/esp/update-sensor")]
-        [AllowAnonymous] // Cho ESP gửi lên mà không cần đăng nhập
+        [AllowAnonymous]
         public IActionResult UpdateSensor([FromBody] SensorData data)
         {
             if (data == null)
@@ -145,10 +144,11 @@ namespace btvn5.Controllers
 
             CurrentSensorData = data;
 
-            Console.WriteLine($"[ESP] Nhiệt độ: {data.Temperature}°C | Độ ẩm: {data.Humidity}%");
+            Console.WriteLine($"[ESP] Nhiệt độ: {data.Temperature}°C | Độ ẩm: {data.Humidity}% | Ánh sáng: {data.Light}");
 
             return Ok(new { message = "Đã nhận dữ liệu cảm biến", data });
         }
+
 
 
         [HttpGet("api/sensor/get")]
