@@ -8,6 +8,29 @@
 <p id="statusText">Đang tải trạng thái...</p>
 <button id="btnToggle">Đang tải...</button>
 
+
+
+<div class="sensor-section">
+    <h3>Dữ liệu cảm biến môi trường</h3>
+    <p>Nhiệt độ: <span id="temp">--</span> °C</p>
+    <p>Độ ẩm: <span id="hum">--</span> %</p>
+</div>
+
+<script>
+    async function loadSensor() {
+        const res = await fetch('/api/sensor/get');
+        if (res.ok) {
+            const result = await res.json();
+            document.getElementById('temp').innerText = result.data.temperature.toFixed(1);
+            document.getElementById('hum').innerText = result.data.humidity.toFixed(1);
+        }
+    }
+
+    setInterval(loadSensor, 3000); // Cập nhật mỗi 3 giây
+    loadSensor();
+</script>
+
+
 <script>
     const btn = document.getElementById("btnToggle");
     const statusText = document.getElementById("statusText");

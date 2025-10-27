@@ -10,4 +10,10 @@ namespace btvn5.Models
         public string? State { get; set; }
     }
 
+    public class SensorData
+    {
+        public double Temperature { get; set; }
+        public double Humidity { get; set; }
+    }
+
 }

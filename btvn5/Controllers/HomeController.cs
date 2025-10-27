@@ -7,6 +7,14 @@ namespace btvn5.Controllers
 {
     public class HomeController : Controller
     {
+
+        private static SensorData CurrentSensorData = new SensorData
+        {
+            Temperature = 0,
+            Humidity = 0
+        };
+
+
         private static readonly Dictionary<string, string> validUsers = new()
         {
             { "user1", "123" },
@@ -64,7 +72,7 @@ namespace btvn5.Controllers
                 return RedirectToAction("Index");
             }
 
-            ViewBag.Error = "❌ Sai tài khoản hoặc mật khẩu!";
+            ViewBag.Error = " Sai tài khoản hoặc mật khẩu!";
             return View();
         }
 
@@ -106,17 +114,7 @@ namespace btvn5.Controllers
         }
 
 
-        //[HttpGet("api/esp/state")]
-        //[AllowAnonymous]
-        //public IActionResult GetStateForEsp(string user)
-        //{
-        //    if (!LedStates.ContainsKey(user))
-        //        return NotFound(new { message = $"User '{user}' không tồn tại" });
-
-        //    string state = LedStates[user];
-        //    Console.WriteLine($"[ESP] GET {user} => {state}");
-        //    return Ok(new { user, state });
-        //}
+       
 
         [HttpGet("api/esp/all")]
         [AllowAnonymous]
@@ -136,5 +134,33 @@ namespace btvn5.Controllers
                 data = allStates
             });
         }
+
+
+        [HttpPost("api/esp/update-sensor")]
+        [AllowAnonymous] // Cho ESP gửi lên mà không cần đăng nhập
+        public IActionResult UpdateSensor([FromBody] SensorData data)
+        {
+            if (data == null)
+                return BadRequest(new { message = "Thiếu dữ liệu cảm biến" });
+
+            CurrentSensorData = data;
+
+            Console.WriteLine($"[ESP] Nhiệt độ: {data.Temperature}°C | Độ ẩm: {data.Humidity}%");
+
+            return Ok(new { message = "Đã nhận dữ liệu cảm biến", data });
+        }
+
+
+        [HttpGet("api/sensor/get")]
+        [AllowAnonymous]
+        public IActionResult GetSensor()
+        {
+            return Ok(new
+            {
+                message = "Dữ liệu cảm biến hiện tại",
+                data = CurrentSensorData
+            });
+        }
+
     }
 }
