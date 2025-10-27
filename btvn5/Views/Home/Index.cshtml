@@ -12,37 +12,48 @@
     const btn = document.getElementById("btnToggle");
     const statusText = document.getElementById("statusText");
 
-    // 🔹 Lấy trạng thái LED từ server
     async function loadState() {
         try {
-            const res = await fetch(`/api/control/state`); // không cần /user nữa
+            const res = await fetch(`/api/control/state`);
             if (!res.ok) {
-                statusText.innerText = "❌ Lỗi: " + res.status;
+                statusText.innerText = "Lỗi tải trạng thái (" + res.status + ")";
                 return;
             }
+
             const data = await res.json();
             statusText.innerText = "Trạng thái: " + data.state;
             btn.innerText = data.state === "on" ? "Tắt đèn" : "Bật đèn";
+            btn.style.background = data.state === "on" ? "#ff6666" : "#4CAF50";
+            btn.style.color = "white";
+            btn.style.padding = "8px 16px";
+            btn.style.border = "none";
+            btn.style.borderRadius = "6px";
+            btn.style.cursor = "pointer";
+
         } catch (err) {
-            statusText.innerText = "⚠️ Không thể kết nối server";
+            statusText.innerText = " Không thể kết nối server";
             console.error(err);
         }
     }
 
-    // 🔹 Toggle LED
     async function toggleLed() {
         const newState = btn.innerText === "Bật đèn" ? "on" : "off";
         try {
             const res = await fetch("/api/control/set", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ state: newState }) // chỉ gửi state
+                body: JSON.stringify({ state: newState })
             });
 
             if (!res.ok) {
-                console.error("Lỗi POST:", res.status);
+                console.error(" Lỗi POST:", res.status);
+                return;
             }
-            loadState(); // reload trạng thái mới
+
+            const data = await res.json();
+            console.log("Đã cập nhật:", data);
+            loadState(); // reload lại trạng thái sau khi thay đổi
+
         } catch (err) {
             console.error(err);
         }

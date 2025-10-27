@@ -1,12 +1,12 @@
 ﻿using btvn5.Models;
 using Microsoft.AspNetCore.Mvc;
 using System.Collections.Concurrent;
+using Microsoft.AspNetCore.Authorization;
 
 namespace btvn5.Controllers
 {
     public class HomeController : Controller
     {
-        // ✅ Danh sách tài khoản hợp lệ
         private static readonly Dictionary<string, string> validUsers = new()
         {
             { "user1", "123" },
@@ -20,7 +20,6 @@ namespace btvn5.Controllers
             { "admin", "123" }
         };
 
-        // ✅ Trạng thái LED theo user
         private static ConcurrentDictionary<string, string> LedStates = new()
         {
             ["user1"] = "off",
@@ -33,7 +32,6 @@ namespace btvn5.Controllers
             ["user8"] = "off"
         };
 
-        // ================= WEB: Login / Logout =================
 
         [HttpGet]
         public IActionResult Index()
@@ -76,7 +74,6 @@ namespace btvn5.Controllers
             return RedirectToAction("Login");
         }
 
-        // ================= API CHO WEB =================
 
         [HttpGet]
         [Route("api/control/state")]
@@ -108,35 +105,36 @@ namespace btvn5.Controllers
             return Ok(new { message = "Đã cập nhật", user, state });
         }
 
-        // ================= API CHO ESP =================
 
-        // ✅ ESP GET trạng thái LED của user cụ thể
-        [HttpGet("api/control/state/{user}")]
-        public IActionResult GetStateForEsp(string user)
+        //[HttpGet("api/esp/state")]
+        //[AllowAnonymous]
+        //public IActionResult GetStateForEsp(string user)
+        //{
+        //    if (!LedStates.ContainsKey(user))
+        //        return NotFound(new { message = $"User '{user}' không tồn tại" });
+
+        //    string state = LedStates[user];
+        //    Console.WriteLine($"[ESP] GET {user} => {state}");
+        //    return Ok(new { user, state });
+        //}
+
+        [HttpGet("api/esp/all")]
+        [AllowAnonymous]
+        public IActionResult GetAllStatesForEsp()
         {
-            if (!LedStates.ContainsKey(user))
-                return NotFound(new { message = $"User '{user}' không tồn tại" });
+            Console.WriteLine("[ESP] GET ALL LED STATES");
 
-            string state = LedStates[user];
-            Console.WriteLine($"[ESP] GET {user} => {state}");
-            return Ok(new { user, state });
-        }
+            var allStates = LedStates.Select(kv => new
+            {
+                user = kv.Key,
+                state = kv.Value
+            });
 
-        // ✅ ESP POST cập nhật trạng thái LED của user cụ thể
-        [HttpPost("api/control/set/{user}")]
-        public IActionResult SetStateForEsp(string user, [FromBody] LedRequest body)
-        {
-            if (!LedStates.ContainsKey(user))
-                return NotFound(new { message = $"User '{user}' không tồn tại" });
-
-            if (body == null || string.IsNullOrEmpty(body.State))
-                return BadRequest(new { message = "Thiếu trạng thái LED" });
-
-            string state = body.State.ToLower() == "on" ? "on" : "off";
-            LedStates[user] = state;
-
-            Console.WriteLine($"[ESP] {user} => {state}");
-            return Ok(new { message = "Đã cập nhật", user, state });
+            return Ok(new
+            {
+                message = "Danh sách trạng thái LED",
+                data = allStates
+            });
         }
     }
 }
