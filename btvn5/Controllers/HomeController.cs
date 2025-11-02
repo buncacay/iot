@@ -2,32 +2,29 @@
 using Microsoft.AspNetCore.Mvc;
 using System.Collections.Concurrent;
 using Microsoft.AspNetCore.Authorization;
+using System.Text.Json;
 
 namespace btvn5.Controllers
 {
     public class HomeController : Controller
     {
-
+        // ✅ Biến lưu dữ liệu cảm biến hiện tại
         private static SensorData CurrentSensorData = new SensorData
         {
             Temperature = 0,
-            Humidity = 0
+            Humidity = 0,
+            Light = 0
         };
 
-
+        // ✅ Tài khoản hợp lệ
         private static readonly Dictionary<string, string> validUsers = new()
         {
-            { "user1", "123" },
-            { "user2", "123" },
-            { "user3", "123" },
-            { "user4", "123" },
-            { "user5", "123" },
-            { "user6", "123" },
-            { "user7", "123" },
-            { "user8", "123" },
-            { "admin", "123" }
+            { "user1", "123" }, { "user2", "123" }, { "user3", "123" },
+            { "user4", "123" }, { "user5", "123" }, { "user6", "123" },
+            { "user7", "123" }, { "user8", "123" }
         };
 
+        // ✅ Lưu trạng thái LED theo từng user
         private static ConcurrentDictionary<string, string> LedStates = new()
         {
             ["user1"] = "off",
@@ -40,7 +37,10 @@ namespace btvn5.Controllers
             ["user8"] = "off"
         };
 
+        // ✅ Khóa tránh race condition
+        private static readonly ConcurrentDictionary<string, object> UserLocks = new();
 
+        // ✅ Hiển thị trang chính
         [HttpGet]
         public IActionResult Index()
         {
@@ -53,16 +53,16 @@ namespace btvn5.Controllers
             return View();
         }
 
+        // ✅ Trang đăng nhập
         [HttpGet]
         public IActionResult Login()
         {
-            var user = HttpContext.Session.GetString("user");
-            if (user != null)
+            if (HttpContext.Session.GetString("user") != null)
                 return RedirectToAction("Index");
-
             return View();
         }
 
+        // ✅ Xử lý đăng nhập
         [HttpPost]
         public IActionResult Login(string username, string password)
         {
@@ -71,20 +71,19 @@ namespace btvn5.Controllers
                 HttpContext.Session.SetString("user", username);
                 return RedirectToAction("Index");
             }
-
-            ViewBag.Error = " Sai tài khoản hoặc mật khẩu!";
+            ViewBag.Error = "Sai tài khoản hoặc mật khẩu!";
             return View();
         }
 
+        // ✅ Đăng xuất
         public IActionResult Logout()
         {
             HttpContext.Session.Clear();
             return RedirectToAction("Login");
         }
 
-
-        [HttpGet]
-        [Route("api/control/state")]
+        // ✅ Lấy trạng thái LED cho FE (KHÔNG có message)
+        [HttpGet("api/control/state")]
         public IActionResult GetState()
         {
             var user = HttpContext.Session.GetString("user");
@@ -92,75 +91,113 @@ namespace btvn5.Controllers
                 return Unauthorized(new { message = "Chưa đăng nhập" });
 
             string state = LedStates.ContainsKey(user) ? LedStates[user] : "off";
-            return Ok(new { user, state });
+
+            return Ok(new
+            {
+                user,
+                state,
+                light = CurrentSensorData.Light
+            });
         }
 
-        [HttpPost]
-        [Route("api/control/set")]
-        public IActionResult SetState([FromBody] LedRequest body)
+        // ✅ Cập nhật trạng thái LED (CÓ message)
+        [HttpPost("api/control/set")]
+        public async Task<IActionResult> SetState([FromBody] JsonElement json)
         {
             var user = HttpContext.Session.GetString("user");
             if (user == null)
                 return Unauthorized(new { message = "Chưa đăng nhập" });
 
-            if (body == null || string.IsNullOrEmpty(body.State))
-                return BadRequest(new { message = "Thiếu trạng thái LED" });
+            if (!json.TryGetProperty("state", out JsonElement stateElement))
+                return BadRequest(new { message = "Thiếu dữ liệu 'state'" });
 
-            string state = body.State.ToLower() == "on" ? "on" : "off";
-            LedStates[user] = state;
+            string newState = stateElement.GetString() ?? "off";
+            var userLock = UserLocks.GetOrAdd(user, new object());
 
-            Console.WriteLine($"[WEB] {user} => {state}");
-            return Ok(new { message = "Đã cập nhật", user, state });
+            lock (userLock)
+            {
+                LedStates[user] = newState;
+            }
+
+            // ✅ Ghi nhận giá trị ánh sáng ban đầu
+            int oldLight = CurrentSensorData.Light;
+
+            // ⏳ Chờ tối đa 5 giây để ESP gửi dữ liệu cảm biến mới
+            await Task.Delay(5000);
+
+            string message;
+            int newLight = CurrentSensorData.Light;
+
+            // ✅ Logic bật/tắt sau khi đợi 5 giây
+            if (newState == "on" && newLight == 1 && oldLight != newLight)
+                message = "💡 Bật đèn thành công!";
+            else if (newState == "off" && newLight == 0 && oldLight != newLight)
+                message = "💤 Tắt đèn thành công!";
+            else
+                message = "⚠️ Thao tác thất bại, cảm biến không phản hồi sau 5 giây!";
+
+            Console.WriteLine($"[SERVER] User: {user}, LED: {newState}, LightSensor: {newLight}, Message: {message}");
+
+            return Ok(new { user, state = newState, message });
         }
 
 
-       
-
+        // ✅ ESP lấy tất cả trạng thái LED
         [HttpGet("api/esp/all")]
         [AllowAnonymous]
         public IActionResult GetAllStatesForEsp()
         {
-            Console.WriteLine("[ESP] GET ALL LED STATES");
-
             var allStates = LedStates.Select(kv => new
             {
                 user = kv.Key,
                 state = kv.Value
             });
-
-            return Ok(new
-            {
-                message = "Danh sách trạng thái LED",
-                data = allStates
-            });
+            return Ok(new { message = "Danh sách trạng thái LED", data = allStates });
         }
 
-        [HttpPost("api/esp/update-sensor")]
+        // ✅ ESP cập nhật dữ liệu cảm biến
+        [HttpPut("api/esp/update-sensor")]
         [AllowAnonymous]
-        public IActionResult UpdateSensor([FromBody] SensorData data)
+        public IActionResult UpdateSensor([FromBody] JsonElement json)
         {
-            if (data == null)
-                return BadRequest(new { message = "Thiếu dữ liệu cảm biến" });
+            if (!json.ValueKind.Equals(JsonValueKind.Object))
+                return BadRequest(new { message = "Dữ liệu không hợp lệ" });
 
-            CurrentSensorData = data;
+            try
+            {
+                if (json.TryGetProperty("temperature", out var tempProp))
+                    CurrentSensorData.Temperature = (float)tempProp.GetDouble();
 
-            Console.WriteLine($"[ESP] Nhiệt độ: {data.Temperature}°C | Độ ẩm: {data.Humidity}% | Ánh sáng: {data.Light}");
+                if (json.TryGetProperty("humidity", out var humProp))
+                    CurrentSensorData.Humidity = (float)humProp.GetDouble();
 
-            return Ok(new { message = "Đã nhận dữ liệu cảm biến", data });
+                if (json.TryGetProperty("light", out var lightProp))
+                    CurrentSensorData.Light = lightProp.GetInt32();
+
+                Console.WriteLine("=====================================");
+                Console.WriteLine($"[ESP] 📡 CẬP NHẬT CẢM BIẾN:");
+                Console.WriteLine($"🌡️ Nhiệt độ: {CurrentSensorData.Temperature} °C");
+                Console.WriteLine($"💧 Độ ẩm: {CurrentSensorData.Humidity} %");
+                Console.WriteLine($"💡 Ánh sáng: {CurrentSensorData.Light}");
+                Console.WriteLine("=====================================");
+
+                return Ok(new
+                {
+                    message = "Đã cập nhật dữ liệu cảm biến",
+                    data = CurrentSensorData
+                });
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new { message = "Lỗi khi xử lý dữ liệu", error = ex.Message });
+            }
         }
 
-
-
+        // ✅ FE lấy dữ liệu cảm biến
         [HttpGet("api/sensor/get")]
-        [AllowAnonymous]
         public IActionResult GetSensor()
         {
-            return Ok(new
-            {
-                message = "Dữ liệu cảm biến hiện tại",
-                data = CurrentSensorData
-            });
+            return Ok(new { message = "Dữ liệu cảm biến hiện tại", data = CurrentSensorData });
         }
-
     }
 }

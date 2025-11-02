@@ -12,7 +12,6 @@
     <h3>Dữ liệu cảm biến môi trường</h3>
     <p>Nhiệt độ: <span id="temp">--</span> °C</p>
     <p>Độ ẩm: <span id="hum">--</span> %</p>
-    <p>Ánh sáng: <span id="light">--</span></p>
 </div>
 
 <p id="ledMessage" style="color: green; font-weight: bold;"></p>
@@ -20,32 +19,24 @@
 <script>
     const btn = document.getElementById("btnToggle");
     const statusText = document.getElementById("statusText");
+    const ledMessage = document.getElementById("ledMessage");
 
-    // --------- Cập nhật dữ liệu cảm biến ---------
+    let lastLedState = null;
+
+    // ✅ Load cảm biến (mỗi 3s)
     async function loadSensor() {
         try {
             const res = await fetch('/api/sensor/get');
             if (!res.ok) return;
-
             const result = await res.json();
             document.getElementById('temp').innerText = result.data.temperature.toFixed(1);
             document.getElementById('hum').innerText = result.data.humidity.toFixed(1);
-
-            if (result.data.light !== undefined) {
-                document.getElementById('light').innerText = result.data.light;
-            } else {
-                document.getElementById('light').innerText = "--";
-            }
         } catch (err) {
             console.error(err);
         }
     }
 
-    // Cập nhật mỗi 3 giây
-    setInterval(loadSensor, 3000);
-    loadSensor();
-
-    // --------- Cập nhật trạng thái LED ---------
+    // ✅ Load trạng thái đèn (chỉ update UI)
     async function loadState() {
         try {
             const res = await fetch('/api/control/state');
@@ -53,9 +44,9 @@
                 statusText.innerText = "Lỗi tải trạng thái (" + res.status + ")";
                 return;
             }
-
             const data = await res.json();
-            statusText.innerText = "Trạng thái: " + data.state;
+
+            statusText.innerText = "Trạng thái: " + data.state + " | Ánh sáng: " + data.light;
             btn.innerText = data.state === "on" ? "Tắt đèn" : "Bật đèn";
             btn.style.background = data.state === "on" ? "#ff6666" : "#4CAF50";
             btn.style.color = "white";
@@ -64,13 +55,15 @@
             btn.style.borderRadius = "6px";
             btn.style.cursor = "pointer";
 
+            lastLedState = data.state;
+
         } catch (err) {
             statusText.innerText = "Không thể kết nối server";
             console.error(err);
         }
     }
 
-    // --------- Nút bật/tắt LED ---------
+    // ✅ Bật/tắt đèn (hiển thị message từ server)
     async function toggleLed() {
         const newState = btn.innerText === "Bật đèn" ? "on" : "off";
         try {
@@ -81,35 +74,35 @@
             });
 
             if (!res.ok) {
-                console.error("Lỗi POST:", res.status);
+                ledMessage.innerText = "❌ Lỗi khi gửi lệnh tới server.";
+                ledMessage.style.color = "red";
                 return;
             }
 
             const data = await res.json();
-            console.log("Đã cập nhật:", data);
 
-            // Reload trạng thái LED
-            await loadState();
+            // ✅ Cập nhật giao diện
+            statusText.innerText = "Trạng thái: " + data.state;
+            btn.innerText = data.state === "on" ? "Tắt đèn" : "Bật đèn";
+            btn.style.background = data.state === "on" ? "#ff6666" : "#4CAF50";
 
-            // Lấy dữ liệu cảm biến để hiển thị ánh sáng
-            const sensorRes = await fetch('/api/sensor/get');
-            const sensorData = sensorRes.ok ? await sensorRes.json() : null;
+            // ✅ Hiển thị message từ server
+            ledMessage.innerText = data.message;
+            ledMessage.style.color = data.message.includes("thành công") ? "green" : "orange";
 
-            let message = `Đã ${newState === "on" ? "bật" : "tắt"} đèn thành công.`;
-            if (sensorData && sensorData.data.light !== undefined) {
-                message += ` Ánh sáng hiện tại: ${sensorData.data.light}`;
-            }
-
-            document.getElementById('ledMessage').innerText = message;
+            lastLedState = data.state;
 
         } catch (err) {
             console.error(err);
+            ledMessage.innerText = "⚠️ Lỗi kết nối server!";
+            ledMessage.style.color = "red";
         }
     }
 
-    // --------- Thêm sự kiện nút ---------
+    // ✅ Gán event click và tự động refresh
     btn.addEventListener("click", toggleLed);
-
-    // Load trạng thái LED ban đầu
     loadState();
+    loadSensor();
+    setInterval(loadState, 3000);
+    setInterval(loadSensor, 3000);
 </script>
