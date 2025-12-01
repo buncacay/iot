@@ -160,7 +160,7 @@ btnPump.onclick = ()=> {
   db.ref("/fish/pump").once("value").then(snap => {
     const newVal = !snap.val();
     db.ref("/fish/pump").set(newVal);
-    pushHistory("Pump " + (newVal?"ON":"OFF"));
+    pushHistory("Pump " + (newVal?"OFF":"ON"));
   });
 };
 btnLight.onclick = ()=> {
