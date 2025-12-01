@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>ESP Control Panel (Firebase)</title>
+<title>ESP Control Panel with History</title>
 
 <!-- Firebase v8 compat -->
 <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
@@ -11,7 +11,7 @@
 
 <style>
 body { font-family: Arial; padding: 20px; background: #f9f9f9; }
-#alertBox { padding: 12px; border:1px solid #aaa; border-radius:8px; margin-bottom:20px; background:#fff3cd; max-height:140px; overflow-y:auto; }
+#alertBox, #historyBox { padding:12px; border:1px solid #aaa; border-radius:8px; margin-bottom:20px; background:#fff3cd; max-height:180px; overflow-y:auto; }
 .grid { display:grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap:15px; }
 .card { background:#fff; border-radius:12px; padding:15px; box-shadow:0 4px 8px rgba(0,0,0,0.08); display:flex; flex-direction:column; align-items:center; }
 .btn { width:100%; padding:12px; margin-bottom:10px; border:none; border-radius:10px; cursor:pointer; font-size:16px; font-weight:600; }
@@ -21,6 +21,8 @@ small { color:#666; }
 </style>
 </head>
 <body>
+
+<h2>ESP Control Panel</h2>
 
 <div id="alertBox"><ul id="alertList"></ul></div>
 
@@ -55,8 +57,10 @@ small { color:#666; }
   </div>
 </div>
 
+<h3>Lịch sử thao tác</h3>
+<div id="historyBox"><ul id="historyList"></ul></div>
+
 <script>
-/* Firebase config */
 var firebaseConfig = {
   apiKey: "AIzaSyDxAPWDdTzTHbK9Bggzet9l9G0U0r2fMDI",
   authDomain: "pump-88184.firebaseapp.com",
@@ -87,6 +91,7 @@ const lightEnd = document.getElementById("lightEnd");
 const saveLightSchedule = document.getElementById("saveLightSchedule");
 const thresholdInput = document.getElementById("threshold");
 const saveThreshold = document.getElementById("saveThreshold");
+const historyList = document.getElementById("historyList");
 
 let alertQueue = [];
 function addAlert(msg, color="orange"){
@@ -106,76 +111,77 @@ function renderAlerts(){
   });
 }
 
-/* Listen status (/fish/status) từ ESP hoặc Firebase */
-db.ref("/fish/status").on("value", snap=>{
-  if(!snap.exists()) return;
-  const s = snap.val();
+/* PUSH HISTORY từ Web */
+function pushHistory(action){
+  const json = { action, by:"Web", timestamp: Date.now() };
+  db.ref("/fish/history").push(json);
+}
 
-  waterVal.innerText = s.distance_mm !== undefined ? s.distance_mm : "---";
-  tempVal.innerText = s.temperature !== undefined ? s.temperature : "---";
-  pumpCountElem.innerText = s.pumpCount !== undefined ? s.pumpCount : 0;
-  lightCountElem.innerText = s.lightCount !== undefined ? s.lightCount : 0;
-
-  // alerts từ ESP
-  if (s.fastDropAlert) addAlert("⚠ Nước giảm nhanh!", "red");
-  if (s.distance_mm !== undefined && s.distance_mm < (s.thresholdMM || 50)) addAlert("⚠ Mực nước dưới ngưỡng!", "orange");
-});
-
-/* Listen config (/fish/config) */
-db.ref("/fish/config").on("value", snap=>{
-  if(!snap.exists()) return;
-  const c = snap.val();
-
-  if (c.thresholdMM !== undefined) thresholdInput.value = c.thresholdMM;
-  if (c.lightSchedule && c.lightSchedule.start) lightStart.value = c.lightSchedule.start;
-  if (c.lightSchedule && c.lightSchedule.end)   lightEnd.value   = c.lightSchedule.end;
-});
-
-/* Listen control node (/fish) */
+/* Listen status (/fish) */
 db.ref("/fish").on("value", snap=>{
   if(!snap.exists()) return;
-  const d = snap.val();
+  const s = snap.val();
+  waterVal.innerText = s.distance_mm ?? "---";
+  tempVal.innerText = s.temperature ?? "---";
+  pumpCountElem.innerText = s.pumpCount ?? 0;
+  lightCountElem.innerText = s.lightCount ?? 0;
 
-  btnAuto.innerText = "Chế độ: " + (d.auto ? "AUTO" : "MANUAL");
-  btnPump.innerText = "Bơm: " + (d.pump ? "ON" : "OFF");
-  btnLight.innerText = "Đèn: " + (d.light ? "ON" : "OFF");
+  if(s.fastDropAlert) addAlert("⚠ Nước giảm nhanh!", "red");
+  if(s.distance_mm !== undefined && s.distance_mm < (s.thresholdMM||50)) addAlert("⚠ Mực nước dưới ngưỡng!", "orange");
+  btnAuto.innerText = "Chế độ: " + (s.auto ? "AUTO" : "MANUAL");
+  btnPump.innerText = "Bơm: " + (s.pump ? "OFF" : "ON");
+  btnLight.innerText = "Đèn: " + (s.light ? "ON" : "OFF");
+  btnPump.disabled = s.auto;
+  btnLight.disabled = s.auto;
 
-  btnPump.disabled = d.auto;
-  btnLight.disabled = d.auto;
+  if(s.thresholdMM !== undefined) thresholdInput.value = s.thresholdMM;
+  if(s.start) lightStart.value = s.start;
+  if(s.end) lightEnd.value = s.end;
 });
 
-/* UI actions -> write Firebase */
+/* Listen history */
+db.ref("/fish/history").limitToLast(20).on("child_added", snap=>{
+  const h = snap.val();
+  const li = document.createElement("li");
+  const d = new Date(h.timestamp);
+  li.innerText = `[${d.toLocaleTimeString()}] ${h.by}: ${h.action}`;
+  historyList.prepend(li);
+});
+
+/* UI actions -> Firebase + History */
 btnAuto.onclick = ()=> {
   db.ref("/fish/auto").once("value").then(snap => {
-    db.ref("/fish/auto").set(!snap.val());
+    const newVal = !snap.val();
+    db.ref("/fish/auto").set(newVal);
+    pushHistory("Auto mode " + (newVal?"ON":"OFF"));
   });
 };
-
 btnPump.onclick = ()=> {
   db.ref("/fish/pump").once("value").then(snap => {
-    db.ref("/fish/pump").set(!snap.val());
+    const newVal = !snap.val();
+    db.ref("/fish/pump").set(newVal);
+    pushHistory("Pump " + (newVal?"ON":"OFF"));
   });
 };
-
 btnLight.onclick = ()=> {
   db.ref("/fish/light").once("value").then(snap => {
-    db.ref("/fish/light").set(!snap.val());
+    const newVal = !snap.val();
+    db.ref("/fish/light").set(newVal);
+    pushHistory("Light " + (newVal?"ON":"OFF"));
   });
 };
-
 saveThreshold.onclick = ()=>{
-  const v = Number(thresholdInput.value || 0);
-  db.ref("/fish/config/thresholdMM").set(v);
-  addAlert("Đã lưu ngưỡng: " + v + " mm", "green");
+  const v = Number(thresholdInput.value||0);
+  db.ref("/fish/thresholdMM").set(v);
+  pushHistory("Threshold set to "+v+" mm");
 };
-
 saveLightSchedule.onclick = ()=>{
   const s = lightStart.value;
   const e = lightEnd.value;
-  if (!s || !e) return alert("Chọn giờ hợp lệ");
-  db.ref("/fish/config/lightSchedule/start").set(s);
-  db.ref("/fish/config/lightSchedule/end").set(e);
-  addAlert("Đã lưu lịch đèn: " + s + " → " + e, "green");
+  if(!s||!e) return alert("Chọn giờ hợp lệ");
+  db.ref("/fish/start").set(s);
+  db.ref("/fish/end").set(e);
+  pushHistory(`Light schedule set: ${s} → ${e}`);
 };
 </script>
 </body>
